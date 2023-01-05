@@ -38,7 +38,7 @@ vortexSimulation.exe: $(OBJS)
 help:
 	@echo "Available targets : "
 	@echo "    all                           : compile all executables"
-	@echo "    vortexSimulation.exe          : compile simple syracuse sequence executable"
+	@echo "    vortexSimulation.exe          : compile simple this executable"
 	@echo "Add DEBUG=yes to compile in debug"
 	@echo "Configuration :"
 	@echo "    CXX      :    $(CXX)"
