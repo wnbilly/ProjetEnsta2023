@@ -18,7 +18,7 @@ On a donc $\vec{v} = \frac{K}{\|\vec{r}\|^{2}}*\vec{d}$.
 Le tore est un rectangle dont les côtés opposés sont reliés. Cela revient à considérer le domaine comme *cyclique* ce qui implique qu'on devrait gèrer une infinité de tourbillons dans l'absolu. Cependant, il 
 est important de noter que les vitesses générées ont un module en $\frac{1}{\|\vec{r}\|}$, si bien qu'il suffit pour une bonne approximation de ne gèrer que les tourbillons se trouvant dans les domaines adjacents comme illustré à la [figure 1](#fig1).
 
-Ainsi, si un tourbillon est décrit dans la simulation, le champs de vitesse prend en fait en compte neuf tourbillons pour prendre en compte la topologie en tore du domaine de calcul.
+Ainsi, si un tourbillon est décrit dans la simulation, le champ de vitesse prend en fait en compte neuf tourbillons pour prendre en compte la topologie en tore du domaine de calcul.
 
 | ![Illustration tore](doc/tore.png) |
 |:--:|
@@ -42,11 +42,11 @@ Exemple :
 
 Plusieurs fichiers décrivant diverses simulations sont donnés dans le répertoire **data** :
 
- - **oneVortexSimulation.dat** : Simule un seul tourbillon placé au centre du domaine de calcul et immobile (il ne se déplace pas). Utile pour tester un cas simple en parallèle en testant uniquement le déplacement des particules (le champs de vitesse reste lui aussi statique);
+ - **oneVortexSimulation.dat** : Simule un seul tourbillon placé au centre du domaine de calcul et immobile (il ne se déplace pas). Utile pour tester un cas simple en parallèle en testant uniquement le déplacement des particules (le champ de vitesse reste lui aussi statique);
  - **simpleSimulation.dat** : Simule deux tourbillons contra-rotatifs et mobiles. Utile pour tester un cas simple en parallèle avec un champ de vitesse instationnaire;
  - **cornertest.dat** : Simule un unique tourbillon stationnaire centré dans le coin inférieur droit du domaine de calcul. Les particules sont concentrées au départ dans une petite zone du domaine afin de tester facilement la périodicité du domaine de calcul;
  - **triplevortex.dat** : Simule trois tourbillons dont un contra-rotatif par rapport aux deux autres. Les tourbillons sont mobiles.
- - **manyvortex.dat** : Simule cinq tourbillons mobiles dont un seul est contra-rotatif et centré par rapport aux quatre autres. Par symétrie, le tourbillon central bien que normalement mobile restera immobile par compensation des diverses vitesses générées par les quatre autres tourbillons.
+ - **manyvortices.dat** : Simule cinq tourbillons mobiles dont un seul est contra-rotatif et centré par rapport aux quatre autres. Par symétrie, le tourbillon central bien que normalement mobile restera immobile par compensation des diverses vitesses générées par les quatre autres tourbillons.
 
 Il vous est parfaitement possible de créer vos propres fichiers de simulation. Des commentaires accompagnent ces fichiers afin que vous puissiez vous même en définir de nouveaux.
 
