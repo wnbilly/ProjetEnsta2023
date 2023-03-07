@@ -29,6 +29,17 @@ Pour ceux curieux en mathématiques :
 - Le schéma en temps utilisé est un schéma de Runge-Kutta d'ordre cinq explicite. Il offre une grande précision en temps mais devient instable pour des pas de temps supérieurs à 1.4. Pour chaque particule (et tourbillon si mobile) on doit effectuer trois estimations du déplacement par particule pour trouver l'interpolation d'ordre cinq à effectuer.
 - Le calcul du déplacement des particules utilise le champ de vitesse calculé sur une grille cartésienne (et affiché dans la partie gauche de la fenêtre) en faisant une interpolation bi-cubique par rapport aux champs de vitesse voisins de la particule.
 
+## Compilation du code
+
+Installer la dépendance à la bibliothèque graphique utilisée :
+
+    sudo apt install libsfml-dev
+
+Compiler :
+
+    make all
+
+
 ## Utilisation du code
 
 L'exécutable attend trois paramètres :
