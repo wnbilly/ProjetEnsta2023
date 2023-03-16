@@ -2,6 +2,7 @@
 #include make_msys.inc 
 include make_linux.inc
 
+CXX = mpicxx
 
 ALL= vortexSimulation.exe
 
