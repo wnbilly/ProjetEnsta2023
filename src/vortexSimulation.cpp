@@ -107,13 +107,14 @@ int main( int nargs, char* argv[] )
 {
 	// Init MPI
 	MPI_Init(&nargs, &argv);
+	MPI_Comm global;
+	MPI_Comm_dup(MPI_COMM_WORLD, &global);
 
 	int rank, size;
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-	std::cout << "Hello from process " << rank << " of " << size << " processes." << std::endl;
-
+	MPI_Request request = MPI_REQUEST_NULL;
 
     char const* filename;
     if (nargs==1)
@@ -139,91 +140,182 @@ int main( int nargs, char* argv[] )
     auto grid     = std::get<2>(config);
     auto cloud    = std::get<3>(config);
 
-    std::cout << "######## Vortex simultor ########" << std::endl << std::endl;
-    std::cout << "Press P for play animation " << std::endl;
-    std::cout << "Press S to stop animation" << std::endl;
-    std::cout << "Press right cursor to advance step by step in time" << std::endl;
-    std::cout << "Press down cursor to halve the time step" << std::endl;
-    std::cout << "Press up cursor to double the time step" << std::endl;
+	grid.updateVelocityField(vortices);
 
-    grid.updateVelocityField(vortices);
+	bool animate = false;
+	double dt = 0.1;
 
-    Graphisme::Screen myScreen( {resx,resy}, {grid.getLeftBottomVertex(), grid.getRightTopVertex()} );
-    bool animate=false;
-    double dt = 0.1;
+	bool running = true;
 
-	// Init timers for profiling
-	std::chrono::duration<double> totalCalcul;
-	std::chrono::duration<double> totalDisplay;
-	int nbIterCalcul = 0;
-	int nbIterDisplay = 0;
+	if (rank==0) {
 
-    while (myScreen.isOpen())
-    {
-		auto startDisplay = std::chrono::system_clock::now();
-        auto start = std::chrono::system_clock::now();
-        bool advance = false;
-        // on inspecte tous les évènements de la fenêtre qui ont été émis depuis la précédente itération
-        sf::Event event;
-        while (myScreen.pollEvent(event))
-        {
-            // évènement "fermeture demandée" : on ferme la fenêtre
-            if (event.type == sf::Event::Closed)
-                myScreen.close();
-            if (event.type == sf::Event::Resized)
-            {
-                // on met à jour la vue, avec la nouvelle taille de la fenêtre
-                myScreen.resize(event);
-            }
-            if (sf::Keyboard::isKeyPressed(sf::Keyboard::P)) animate = true;
-            if (sf::Keyboard::isKeyPressed(sf::Keyboard::S)) animate = false;
-            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Up)) dt *= 2;
-            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Down)) dt /= 2;
-            if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right)) advance = true;
-        }
+		//std::cout << vortices << isMobile << std::endl;
 
-		auto startCalcul = std::chrono::system_clock::now();
-        if (animate | advance)
-        {
-            if (isMobile)
-            {
-                cloud = Numeric::solve_RK4_movable_vortices(dt, grid, vortices, cloud);
-            }
-            else
-            {
-                cloud = Numeric::solve_RK4_fixed_vortices(dt, grid, cloud);
-            }
-        }
-		auto endCalcul = std::chrono::system_clock::now();
+		std::cout << "######## Vortex simulator ########" << std::endl << std::endl;
+		std::cout << "Press P for play animation " << std::endl;
+		std::cout << "Press S to stop animation" << std::endl;
+		std::cout << "Press right cursor to advance step by step in time" << std::endl;
+		std::cout << "Press down cursor to halve the time step" << std::endl;
+		std::cout << "Press up cursor to double the time step" << std::endl;
 
-        myScreen.clear(sf::Color::Black);
-        std::string strDt = std::string("Time step : ") + std::to_string(dt);
-        myScreen.drawText(strDt, Geometry::Point<double>{50, double(myScreen.getGeometry().second-96)});
-        myScreen.displayVelocityField(grid, vortices);
-        myScreen.displayParticles(grid, vortices, cloud);
-        auto end = std::chrono::system_clock::now();
-        std::chrono::duration<double> diff = end - start;
-        std::string str_fps = std::string("FPS : ") + std::to_string(1./diff.count());
-        myScreen.drawText(str_fps, Geometry::Point<double>{300, double(myScreen.getGeometry().second-96)});
-        myScreen.display();
+		Graphisme::Screen myScreen({resx, resy}, {grid.getLeftBottomVertex(), grid.getRightTopVertex()});
 
-		auto endDisplay = std::chrono::system_clock::now();
+		// Init timers for profiling
+		std::chrono::duration<double> totalComm;
+		std::chrono::duration<double> totalDisplay;
+		int nbIterComm = 0;
+		int nbIterDisplay = 0;
 
-		std::chrono::duration<double> diffCalcul = endCalcul - startCalcul;
-		std::chrono::duration<double> diffDisplay = endDisplay - startDisplay - diffCalcul;
+		// Display loop
+		while (running) {
+			auto startDisplay = std::chrono::system_clock::now();
+			auto start = std::chrono::system_clock::now();
+			bool advance = false;
 
-		totalCalcul += diffCalcul;
-		totalDisplay += diffDisplay;
-		nbIterCalcul++;
-		nbIterDisplay++;
+			// on inspecte tous les évènements de la fenêtre qui ont été émis depuis la précédente itération
+			sf::Event event;
+			bool ordersToSend;
 
+			while (myScreen.pollEvent(event)) {
+				ordersToSend = false;
 
-    }
+				// évènement "fermeture demandée" : on ferme la fenêtre
+				if (event.type == sf::Event::Closed) {
+					myScreen.close();
+					running = false;
+					ordersToSend = true;
+				}
+				if (event.type == sf::Event::Resized) {
+					// on met à jour la vue, avec la nouvelle taille de la fenêtre
+					myScreen.resize(event);
+				}
+				if (sf::Keyboard::isKeyPressed(sf::Keyboard::P) && !animate) {
+					animate = true;
+					ordersToSend = true;
+				}
+				if (sf::Keyboard::isKeyPressed(sf::Keyboard::S) && animate) {
+					animate = false;
+					ordersToSend = true;
+				}
+				if (sf::Keyboard::isKeyPressed(sf::Keyboard::Up)) {
+					dt *= 2;
+					ordersToSend = true;
+				}
+				if (sf::Keyboard::isKeyPressed(sf::Keyboard::Down)) {
+					dt /= 2;
+					ordersToSend = true;
+				}
+				if (sf::Keyboard::isKeyPressed(sf::Keyboard::Right) && !advance) {
+					advance = true;
+					ordersToSend = true;
+				}
+				if (ordersToSend) // On envoie uniquement s'il y a eu des toggle de animate, advance, dt ou fermeture
+				{
+					// On ne compte pas ces temps de communication car elles sont ponctuelles
+					std::cout << "0 sending orders" << std::endl;
+					MPI_Isend(&running, 1, MPI_CXX_BOOL, 1, 0, global, &request);
+					MPI_Isend(&animate, 1, MPI_CXX_BOOL, 1, 0, global, &request);
+					MPI_Isend(&advance, 1, MPI_CXX_BOOL, 1, 0, global, &request);
+					MPI_Isend(&dt, 1, MPI_DOUBLE, 1, 0, global, &request);
+					if (!running) break;
+				}
+			}
 
-	std::cout << "Affichage :" << std::to_string(totalDisplay.count()/nbIterDisplay) << std::endl; // Affichage temps d'affichage
-	std::cout << "Calcul :" << std::to_string(totalCalcul.count()/nbIterCalcul) << std::endl; // Affichage temps de calcul
+			// COMM TO CALCUL
+			std::chrono::_V2::system_clock::time_point startComm;
+			std::chrono::_V2::system_clock::time_point endComm;
 
-	//MPI_Finalize(); //TODO verify
+			if (animate | advance) {
+				startComm = std::chrono::system_clock::now();
+				if (isMobile) {
+					MPI_Recv(grid.data(), grid.size_for_mpi(), MPI_DOUBLE, 1, 0, global, MPI_STATUS_IGNORE);
+					MPI_Recv(vortices.data(), vortices.size_for_mpi(), MPI_DOUBLE, 1, 0, global, MPI_STATUS_IGNORE);
+					MPI_Recv(cloud.data(), cloud.size_for_mpi(), MPI_DOUBLE, 1, 0, global, MPI_STATUS_IGNORE);
+				} else {
+					MPI_Recv(grid.data(), grid.size_for_mpi(), MPI_DOUBLE, 1, 0, global, MPI_STATUS_IGNORE);
+					MPI_Recv(cloud.data(), cloud.size_for_mpi(), MPI_DOUBLE, 1, 0, global, MPI_STATUS_IGNORE);
+				}
+				endComm = std::chrono::system_clock::now();
+				nbIterComm++;
+			}
+			myScreen.clear(sf::Color::Black);
+			std::string strDt = std::string("Time step : ") + std::to_string(dt);
+			myScreen.drawText(strDt, Geometry::Point<double>{50, double(myScreen.getGeometry().second - 96)});
+			myScreen.displayVelocityField(grid, vortices);
+			myScreen.displayParticles(grid, vortices, cloud);
+			auto end = std::chrono::system_clock::now();
+			std::chrono::duration<double> diff = end - start;
+			std::string str_fps = std::string("FPS : ") + std::to_string(1. / diff.count());
+			myScreen.drawText(str_fps, Geometry::Point<double>{300, double(myScreen.getGeometry().second - 96)});
+			myScreen.display();
 
+			auto endDisplay = std::chrono::system_clock::now();
+
+			totalComm += endComm - startComm;
+			totalDisplay += endDisplay - startDisplay - (endComm - startComm);
+			nbIterComm++;
+			nbIterDisplay++;
+		}
+
+		std::cout << "==Processus 0==\nAffichage :" << std::to_string(totalDisplay.count() / nbIterDisplay) << std::endl; // Affichage temps d'affichage
+		std::cout << "Communication:" << std::to_string(totalComm.count() / nbIterComm) << std::endl; // Affichage temps de calcul
+
+	} else if (rank==1) { // 2 tâches pour l'instant
+
+		std::chrono::duration<double> totalCalcul;
+		std::chrono::duration<double> totalComm;
+		int nbIter = 0;
+
+		while (running) {
+
+			bool advance = false;
+			int flag = 0;
+			MPI_Iprobe(0, 0, global, &flag, MPI_STATUS_IGNORE);
+			if (flag)
+			{	// Used MPI_Recv to not miss any toggle of the parameters (for example missing a toggle of running would lead to processus 1 not finishing )
+				MPI_Recv(&running, 1, MPI_CXX_BOOL, 0, 0, global, MPI_STATUS_IGNORE); // Equivalent to myScreen.isOpen() for process of rank 1
+				MPI_Recv(&animate, 1, MPI_CXX_BOOL, 0, 0, global, MPI_STATUS_IGNORE);
+				MPI_Recv(&advance, 1, MPI_CXX_BOOL, 0, 0, global, MPI_STATUS_IGNORE);
+				MPI_Recv(&dt, 1, MPI_DOUBLE, 0, 0, global, MPI_STATUS_IGNORE);
+				std::cout << "1 received params" << std::endl;
+				if (!running) break;
+			}
+
+			// Used MPI_Isend so the display does not slow down the computing processus
+			if (animate | advance) {
+				nbIter++;
+				if (isMobile) {
+					auto startCalcul = std::chrono::system_clock::now();
+					cloud = Numeric::solve_RK4_movable_vortices(dt, grid, vortices, cloud);
+					auto endCalcul = std::chrono::system_clock::now();
+
+					auto startComm = std::chrono::system_clock::now();
+					MPI_Isend(grid.data(), grid.size_for_mpi(), MPI_DOUBLE, 0, 0, global, &request);
+					MPI_Isend(vortices.data(), vortices.size_for_mpi(), MPI_DOUBLE, 0, 0, global, &request);
+					MPI_Isend(cloud.data(), cloud.size_for_mpi(), MPI_DOUBLE, 0, 0, global, &request);
+
+					auto endComm= std::chrono::system_clock::now();
+					totalCalcul += (endCalcul - startCalcul);
+					totalComm += (endComm - startComm);
+
+				} else {
+					auto startCalcul = std::chrono::system_clock::now();
+					cloud = Numeric::solve_RK4_fixed_vortices(dt, grid, cloud);
+					auto endCalcul = std::chrono::system_clock::now();
+
+					auto startComm = std::chrono::system_clock::now();
+					MPI_Isend(grid.data(), grid.size_for_mpi(), MPI_DOUBLE, 0, 0, global, &request);
+					MPI_Isend(cloud.data(), cloud.size_for_mpi(), MPI_DOUBLE, 0, 0, global, &request);
+					auto endComm= std::chrono::system_clock::now();
+					totalCalcul += (endCalcul - startCalcul);
+					totalComm += (endComm - startComm);
+				}
+			}
+		}
+		std::cout << "==Processus 1==\nCommunication :" << std::to_string(totalComm.count() / nbIter) << std::endl; // Affichage temps de communication principale
+		std::cout << "Calcul :" << std::to_string(totalCalcul.count() / nbIter) << "\n" << std::endl; // Affichage temps de calcul
+	}
+	std::cout << "End of processus " << rank << std::endl;
+	MPI_Finalize();
     return EXIT_SUCCESS;
  }

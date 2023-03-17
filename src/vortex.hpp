@@ -70,6 +70,22 @@ namespace Simulation
 
         vector computeSpeed( point const& a_point ) const;
 
+		//Added data methods as it was done for the other class cartesian_grid_of_speed and cloud_of_points
+		double const* data() const
+		{
+			return (double*)m_centers_and_intensities.data();
+		}
+
+		double* data()
+		{
+			return (double*)m_centers_and_intensities.data();
+		}
+
+		size_t size_for_mpi()
+		{
+			return m_centers_and_intensities.size(); //TODO verify size
+		}
+
         Vortices& operator = ( Vortices const& ) = default;
         Vortices& operator = ( Vortices     && ) = default;
     private:
