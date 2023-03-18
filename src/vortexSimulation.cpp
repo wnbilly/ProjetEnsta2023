@@ -109,7 +109,7 @@ int main( int nargs, char* argv[] )
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 
 	MPI_Request request = MPI_REQUEST_NULL;
-*/
+
 	char const* filename;
 	if (nargs==1)
 	{
