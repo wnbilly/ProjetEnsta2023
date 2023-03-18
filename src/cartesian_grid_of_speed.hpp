@@ -107,7 +107,7 @@ namespace Numeric
 
 		size_t size_for_mpi()
 		{
-			return 2*m_velocityField.size(); //TODO why *2 ? Half of the grid is not sent if no *2
+			return 2*m_velocityField.size();
 		}
 
 		CartesianGridOfSpeed& operator = ( CartesianGridOfSpeed const& ) = default;

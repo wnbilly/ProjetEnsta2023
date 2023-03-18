@@ -78,7 +78,7 @@ namespace Geometry
 
 		size_t size_for_mpi()
 		{
-			return 2*m_setOfPoints.size(); //TODO why *2 ? Half of the grid is not sent if no *2
+			return 2*m_setOfPoints.size();
 		}
 
         CloudOfPoints& operator = ( CloudOfPoints const& ) = default;

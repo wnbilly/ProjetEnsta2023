@@ -83,7 +83,7 @@ namespace Simulation
 
 		size_t size_for_mpi()
 		{
-			return m_centers_and_intensities.size(); //TODO verify size
+			return m_centers_and_intensities.size();
 		}
 
         Vortices& operator = ( Vortices const& ) = default;
