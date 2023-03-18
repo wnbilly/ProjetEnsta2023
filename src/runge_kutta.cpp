@@ -1,6 +1,6 @@
 #include <iostream>
 #include <chrono>
-#include <omp.h>
+//#include <omp.h>
 #include "runge_kutta.hpp"
 #include "cartesian_grid_of_speed.hpp"
 
@@ -21,7 +21,7 @@ std::cout << std::to_string(diff.count()) << std::endl;
     Geometry::CloudOfPoints newCloud(t_points.numberOfPoints());
     // On ne bouge que les points :
 	auto start = std::chrono::system_clock::now();
-	#pragma omp parallel for
+	//#pragma omp parallel for
     for ( std::size_t iPoint=0; iPoint<t_points.numberOfPoints(); ++iPoint)
     {
         point  p = t_points[iPoint];
@@ -54,7 +54,7 @@ Numeric::solve_RK4_movable_vortices( double dt, CartesianGridOfSpeed& t_velocity
     Geometry::CloudOfPoints newCloud(t_points.numberOfPoints());
     // On ne bouge que les points :
 	auto start = std::chrono::system_clock::now();
-	#pragma omp parallel for
+	//#pragma omp parallel for
     for ( std::size_t iPoint=0; iPoint<t_points.numberOfPoints(); ++iPoint)
     {
         point  p = t_points[iPoint];
@@ -71,7 +71,7 @@ Numeric::solve_RK4_movable_vortices( double dt, CartesianGridOfSpeed& t_velocity
         newCloud[iPoint] = t_velocity.updatePosition(p + onesixth*dt*(v1+2.*v2+2.*v3+v4));
     }
 	auto diff = std::chrono::duration<double>(std::chrono::system_clock::now() - start);
-	std::cout << "1st loop movable vortices (s) : " << std::to_string(diff.count()) << std::endl;
+	//std::cout << "1st loop movable vortices (s) : " << std::to_string(diff.count()) << std::endl;
 
     std::vector<point> newVortexCenter;
     newVortexCenter.reserve(t_vortices.numberOfVortices());
@@ -93,7 +93,7 @@ Numeric::solve_RK4_movable_vortices( double dt, CartesianGridOfSpeed& t_velocity
         newVortexCenter.emplace_back(t_velocity.updatePosition(p + onesixth*dt*(v1+2.*v2+2.*v3+v4)));
     }
 	diff = std::chrono::duration<double>(std::chrono::system_clock::now() - start);
-	std::cout << "2nd loop movable vortices (s) : " << std::to_string(diff.count()) << std::endl;
+	//std::cout << "2nd loop movable vortices (s) : " << std::to_string(diff.count()) << std::endl;
 
 	start = std::chrono::system_clock::now();
     for (std::size_t iVortex=0; iVortex<t_vortices.numberOfVortices(); ++iVortex)
@@ -103,7 +103,7 @@ Numeric::solve_RK4_movable_vortices( double dt, CartesianGridOfSpeed& t_velocity
     }
 
 	diff = std::chrono::duration<double>(std::chrono::system_clock::now() - start);
-	std::cout << "3rd loop movable vortices (s) : " << std::to_string(diff.count()) << std::endl;
+	//std::cout << "3rd loop movable vortices (s) : " << std::to_string(diff.count()) << std::endl;
 
     t_velocity.updateVelocityField(t_vortices);
     return newCloud;

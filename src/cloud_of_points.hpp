@@ -76,6 +76,7 @@ namespace Geometry
             m_setOfPoints.push_back(a_point);
         }
 
+		// Added method for MPI convenience
 		size_t size_for_mpi()
 		{
 			return 2*m_setOfPoints.size();

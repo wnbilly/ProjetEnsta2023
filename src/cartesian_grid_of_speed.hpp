@@ -105,6 +105,7 @@ namespace Numeric
 
 		vector computeVelocityFor( point const& p ) const;
 
+		// Added method for MPI convenience
 		size_t size_for_mpi()
 		{
 			return 2*m_velocityField.size();

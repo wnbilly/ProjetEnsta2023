@@ -81,6 +81,7 @@ namespace Simulation
 			return (double*)m_centers_and_intensities.data();
 		}
 
+		// Added method for MPI convenience
 		size_t size_for_mpi()
 		{
 			return m_centers_and_intensities.size();
