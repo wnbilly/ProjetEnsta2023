@@ -110,6 +110,20 @@ int main( int nargs, char* argv[] )
 
 	MPI_Request request = MPI_REQUEST_NULL;
 
+	// Init computation mpi communicator
+	MPI_Comm compComm;
+
+	int color = (rank > 0) ? 1 : 0;
+	MPI_Comm_split(MPI_COMM_WORLD, color, rank-1, &compComm);
+
+	int compRank = -1;
+	int compSize = 1;
+
+	if (rank!=0) {
+		MPI_Comm_rank(compComm, &compRank);
+		MPI_Comm_size(compComm, &compSize);
+	}
+
 	char const* filename;
 	if (nargs==1)
 	{
@@ -129,12 +143,23 @@ int main( int nargs, char* argv[] )
 		resy = std::stoull(argv[3]);
 	}
 
+	// It is supposed that all computers have access to the config file
 	auto vortices = std::get<0>(config);
 	auto isMobile = std::get<1>(config);
 	auto grid     = std::get<2>(config);
 	auto cloud    = std::get<3>(config);
 
 	grid.updateVelocityField(vortices);
+
+	// Distribution of data among the processus
+	std::vector<int> batchSizes(compSize, int(cloud.size_for_mpi()/compSize));
+	batchSizes[compSize-1] = cloud.size_for_mpi() - ((int) cloud.size_for_mpi()/compSize)*(compSize - 1);
+
+	// Necessary for MPI_Gatherv and MPI_Scatterv
+	std::vector<int> displs(compSize, 0);
+	for (int i = 1; i < compSize; i ++) {
+		displs[i] = displs[i - 1] + batchSizes[i - 1];
+	}
 
 	bool animate = false;
 	double dt = 0.1;
@@ -210,12 +235,15 @@ int main( int nargs, char* argv[] )
 				if (ordersToSend)
 				{
 					// On ne compte pas ces temps de communication car elles sont ponctuelles
-					std::cout << "0 sending orders" << std::endl;
 					MPI_Isend(&running, 1, MPI_CXX_BOOL, 1, 0, MPI_COMM_WORLD, &request);
 					MPI_Isend(&animate, 1, MPI_CXX_BOOL, 1, 0, MPI_COMM_WORLD, &request);
 					MPI_Isend(&advance, 1, MPI_CXX_BOOL, 1, 0, MPI_COMM_WORLD, &request);
 					MPI_Isend(&dt, 1, MPI_DOUBLE, 1, 0, MPI_COMM_WORLD, &request);
-					if (!running) break;
+					std::cout << "proc0 -> ." << std::flush;
+					if (!running)
+					{
+						break;
+					}
 				}
 			}
 
@@ -226,13 +254,10 @@ int main( int nargs, char* argv[] )
 			if (animate | advance) {
 				startComm = std::chrono::system_clock::now();
 				if (isMobile) {
-					MPI_Recv(grid.data(), grid.size_for_mpi(), MPI_DOUBLE, 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-					MPI_Recv(vortices.data(), vortices.size_for_mpi(), MPI_DOUBLE, 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-					MPI_Recv(cloud.data(), cloud.size_for_mpi(), MPI_DOUBLE, 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-				} else {
-					MPI_Recv(grid.data(), grid.size_for_mpi(), MPI_DOUBLE, 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-					MPI_Recv(cloud.data(), cloud.size_for_mpi(), MPI_DOUBLE, 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+					MPI_Ibcast(grid.data(), grid.size_for_mpi(), MPI_DOUBLE,  1, MPI_COMM_WORLD, &request);
+					MPI_Ibcast(vortices.data(), vortices.size_for_mpi(), MPI_DOUBLE, 1, MPI_COMM_WORLD, &request);
 				}
+				MPI_Recv(cloud.data(), cloud.size_for_mpi(), MPI_DOUBLE, 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 				endComm = std::chrono::system_clock::now();
 				nbIterComm++;
 			}
@@ -264,17 +289,21 @@ int main( int nargs, char* argv[] )
 		std::cout << "FPS :" << std::to_string(totalFPS / nbIterFPS) << std::endl; // Affichage FPS moyen hors pause
 
 	} else if (rank==1) {
-		// Code for the computation processus
+		// Code for the leading computation processus
 
 		// Init timers
 		std::chrono::duration<double> totalCalcul;
 		std::chrono::duration<double> totalComm;
 		int nbIter = 0;
 
+		// Init local cloud
+		Geometry::CloudOfPoints local_cloud(batchSizes[compRank]);
+
 		while (running) {
 
+			auto startWholeLoop = std::chrono::system_clock::now();
 			bool advance = false;
-			int flag = 0;
+			int flag = 1;
 			MPI_Iprobe(0, 0, MPI_COMM_WORLD, &flag, MPI_STATUS_IGNORE);
 			if (flag)
 			{	// Used MPI_Recv to not miss any toggle of the parameters (for example missing a toggle of running would lead to processus 1 not finishing )
@@ -282,47 +311,109 @@ int main( int nargs, char* argv[] )
 				MPI_Recv(&animate, 1, MPI_CXX_BOOL, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 				MPI_Recv(&advance, 1, MPI_CXX_BOOL, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 				MPI_Recv(&dt, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-				std::cout << "1 received params" << std::endl;
-				if (!running) break;
-			}
-
-			// Used MPI_Isend so the display does not slow down the computing processus
-			// It results in the fact that some data could be missed by the display (I guess)
-			// but the aim of the project is to improve the performances of the simulation
-			if (animate | advance) {
-				nbIter++;
-				if (isMobile) {
-					auto startCalcul = std::chrono::system_clock::now();
-					cloud = Numeric::solve_RK4_movable_vortices(dt, grid, vortices, cloud);
-					auto endCalcul = std::chrono::system_clock::now();
-
-					auto startComm = std::chrono::system_clock::now();
-					MPI_Isend(grid.data(), grid.size_for_mpi(), MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &request);
-					MPI_Isend(vortices.data(), vortices.size_for_mpi(), MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &request);
-					MPI_Isend(cloud.data(), cloud.size_for_mpi(), MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &request);
-
-					auto endComm= std::chrono::system_clock::now();
-					totalCalcul += (endCalcul - startCalcul);
-					totalComm += (endComm - startComm);
-
-				} else {
-					auto startCalcul = std::chrono::system_clock::now();
-					cloud = Numeric::solve_RK4_fixed_vortices(dt, grid, cloud);
-					auto endCalcul = std::chrono::system_clock::now();
-
-					auto startComm = std::chrono::system_clock::now();
-					MPI_Isend(grid.data(), grid.size_for_mpi(), MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &request);
-					MPI_Isend(cloud.data(), cloud.size_for_mpi(), MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &request);
-					auto endComm= std::chrono::system_clock::now();
-					totalCalcul += (endCalcul - startCalcul);
-					totalComm += (endComm - startComm);
+				std::cout << ".. -> proc1" << std::endl;
+				if (!running)
+				{
+					MPI_Bcast(&running, 1, MPI_CXX_BOOL, 0, compComm);
+					MPI_Bcast(&dt, 1, MPI_DOUBLE, 0, compComm);
+					std::cout << "Main computation process stopped and sent running = false" << std::endl;
+					break;
 				}
 			}
+			if (animate | advance) {
+				// Sending params to other computation processus
+				MPI_Bcast(&running, 1, MPI_CXX_BOOL, 0, compComm);
+				MPI_Bcast(&dt, 1, MPI_DOUBLE, 0, compComm);
+				// Scattering data to all
+				MPI_Scatterv(cloud.data(), batchSizes.data(), displs.data(), MPI_DOUBLE, local_cloud.data(), batchSizes[compRank], MPI_DOUBLE, 0, compComm);
+
+				// Computation of main computation process part
+				auto startCalcul = std::chrono::system_clock::now();
+				if (isMobile) {
+					local_cloud = Numeric::solve_RK4_movable_vortices(dt, grid, vortices, local_cloud);
+				} else {
+					local_cloud = Numeric::solve_RK4_fixed_vortices(dt, grid, local_cloud);
+				}
+				auto endCalcul = std::chrono::system_clock::now();
+
+				// Gather cloud as vortices and grid are updated by the computation function of the new cloud
+				MPI_Gatherv(local_cloud.data(), batchSizes[compRank], MPI_DOUBLE, cloud.data(), batchSizes.data(), displs.data(), MPI_DOUBLE, 0, compComm);
+				if (isMobile) {
+					// Sending grid, vortices to all
+					MPI_Ibcast(grid.data(), grid.size_for_mpi(), MPI_DOUBLE,  1, MPI_COMM_WORLD, &request);
+					MPI_Ibcast(vortices.data(), vortices.size_for_mpi(), MPI_DOUBLE, 1, MPI_COMM_WORLD, &request);
+				}
+				// When !isMobile, sending cloud to display as only the cloud is modified (by return of the function) when vortices are fixed according to
+				// Geometry::CloudOfPoints
+				//Numeric::solve_RK4_fixed_vortices( double dt, CartesianGridOfSpeed const& t_velocity, Geometry::CloudOfPoints const& t_points )
+				MPI_Isend(cloud.data(), cloud.size_for_mpi(), MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, &request);
+
+
+				auto endWholeLoop= std::chrono::system_clock::now();
+
+				// Update timers for mean time
+				totalCalcul += (endCalcul - startCalcul);
+				totalComm += (endWholeLoop - startWholeLoop - (endCalcul - startCalcul));
+				nbIter++;
+			}
 		}
-		std::cout << "==Processus 1==\nCommunication :" << std::to_string(totalComm.count() / nbIter) << std::endl; // Affichage temps de communication principale moyen
+		std::cout << "==Computation Processus 0==\nCommunication :" << std::to_string(totalComm.count() / nbIter) << std::endl; // Affichage temps de communication principale moyen
+		std::cout << "Calcul :" << std::to_string(totalCalcul.count() / nbIter) << "\n" << std::endl; // Affichage temps de calcul moyen
+	} else {
+		// Code for other processus
+
+		// Init timers
+		std::chrono::duration<double> totalCalcul;
+		std::chrono::duration<double> totalComm;
+		int nbIter = 0;
+
+		// Init local cloud
+		Geometry::CloudOfPoints local_cloud(batchSizes[compRank]);
+
+		while (running) {
+
+			auto startWholeLoop = std::chrono::system_clock::now();
+			bool advance = false;
+			int flag = 0;
+
+			// No need to probe anymore as only the main computation process communicates with the display
+			MPI_Bcast(&running, 1, MPI_CXX_BOOL, 0, compComm);
+			MPI_Bcast(&dt, 1, MPI_DOUBLE, 0, compComm);
+			if (!running) break;
+
+			// Getting data from the Lord of the computation processus
+			MPI_Scatterv(cloud.data(), batchSizes.data(), displs.data(), MPI_DOUBLE, local_cloud.data(), batchSizes[compRank], MPI_DOUBLE, 0, compComm);
+
+			// Computation of the new cloud
+			auto startCalcul = std::chrono::system_clock::now();
+			if (isMobile) {
+				local_cloud = Numeric::solve_RK4_movable_vortices(dt, grid, vortices, local_cloud);
+			} else {
+				local_cloud = Numeric::solve_RK4_fixed_vortices(dt, grid, local_cloud);
+			}
+			auto endCalcul = std::chrono::system_clock::now();
+			MPI_Gatherv(local_cloud.data(), batchSizes[compRank], MPI_DOUBLE, cloud.data(), batchSizes.data(), displs.data(), MPI_DOUBLE, 0, compComm);
+
+			// Receives updated grid and vortices from main computation process
+			if (isMobile) {
+				MPI_Ibcast(grid.data(), grid.size_for_mpi(), MPI_DOUBLE,  1, MPI_COMM_WORLD, &request);
+				MPI_Ibcast(vortices.data(), vortices.size_for_mpi(), MPI_DOUBLE, 1, MPI_COMM_WORLD, &request);
+			}
+
+
+			auto endWholeLoop= std::chrono::system_clock::now();
+
+			// Update timers for mean time
+			totalCalcul += (endCalcul - startCalcul);
+			totalComm += (endWholeLoop - startWholeLoop - (endCalcul - startCalcul));
+			nbIter++;
+		}
+
+		std::cout << "\n==Computation Processus " << compRank << "==\nCommunication :" << std::to_string(totalComm.count() / nbIter) << std::endl; // Affichage temps de communication principale moyen
 		std::cout << "Calcul :" << std::to_string(totalCalcul.count() / nbIter) << "\n" << std::endl; // Affichage temps de calcul moyen
 	}
-	std::cout << "End of processus " << rank << std::endl;
+
 	MPI_Finalize();
+	std::cout << "End of processus of global rank " << rank << std::endl;
 	return EXIT_SUCCESS;
 }
