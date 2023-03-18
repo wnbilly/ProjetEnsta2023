@@ -157,6 +157,8 @@ int main( int nargs, char* argv[] )
 		// Init timers for profiling
 		std::chrono::duration<double> totalComm;
 		std::chrono::duration<double> totalDisplay;
+		unsigned int totalFPS = 0;
+		int nbIterFPS = 0;
 		int nbIterComm = 0;
 		int nbIterDisplay = 0;
 
@@ -247,14 +249,19 @@ int main( int nargs, char* argv[] )
 
 			// Update the total timers to calculate the means of display time and communication time for the display processus
 			auto endDisplay = std::chrono::system_clock::now();
+			if (animate | advance)
+			{
+				totalFPS += 1. / diff.count();
+				nbIterFPS++;
+			}
 			totalComm += endComm - startComm;
 			totalDisplay += endDisplay - startDisplay - (endComm - startComm);
-			nbIterComm++;
 			nbIterDisplay++;
 		}
 
-		std::cout << "==Processus 0==\nAffichage :" << std::to_string(totalDisplay.count() / nbIterDisplay) << std::endl; // Affichage temps d'affichage
-		std::cout << "Communication:" << std::to_string(totalComm.count() / nbIterComm) << std::endl; // Affichage temps de calcul
+		std::cout << "==Processus 0==\nAffichage :" << std::to_string(totalDisplay.count() / nbIterDisplay) << std::endl; // Affichage temps d'affichage moyen
+		std::cout << "Communication :" << std::to_string(totalComm.count() / nbIterComm) << std::endl; // Affichage temps de calcul moyen
+		std::cout << "FPS :" << std::to_string(totalFPS / nbIterFPS) << std::endl; // Affichage FPS moyen hors pause
 
 	} else if (rank==1) {
 		// Code for the computation processus
@@ -312,8 +319,8 @@ int main( int nargs, char* argv[] )
 				}
 			}
 		}
-		std::cout << "==Processus 1==\nCommunication :" << std::to_string(totalComm.count() / nbIter) << std::endl; // Affichage temps de communication principale
-		std::cout << "Calcul :" << std::to_string(totalCalcul.count() / nbIter) << "\n" << std::endl; // Affichage temps de calcul
+		std::cout << "==Processus 1==\nCommunication :" << std::to_string(totalComm.count() / nbIter) << std::endl; // Affichage temps de communication principale moyen
+		std::cout << "Calcul :" << std::to_string(totalCalcul.count() / nbIter) << "\n" << std::endl; // Affichage temps de calcul moyen
 	}
 	std::cout << "End of processus " << rank << std::endl;
 	MPI_Finalize();
