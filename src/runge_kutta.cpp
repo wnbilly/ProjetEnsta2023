@@ -1,6 +1,6 @@
 #include <iostream>
 #include <chrono>
-//#include <omp.h>
+#include <omp.h>
 #include "runge_kutta.hpp"
 #include "cartesian_grid_of_speed.hpp"
 
@@ -12,16 +12,11 @@ Numeric::solve_RK4_fixed_vortices( double dt, CartesianGridOfSpeed const& t_velo
     constexpr double onesixth = 1./6.;
     using vector = Simulation::Vortices::vector;
     using point  = Simulation::Vortices::point;
-/*template for timers
-auto start = std::chrono::system_clock::now();
-auto end = std::chrono::system_clock::now();
-std::chrono::duration<double> diff = end - start;
-std::cout << std::to_string(diff.count()) << std::endl;
- */
+
     Geometry::CloudOfPoints newCloud(t_points.numberOfPoints());
     // On ne bouge que les points :
 	auto start = std::chrono::system_clock::now();
-	//#pragma omp parallel for
+	#pragma omp parallel for
     for ( std::size_t iPoint=0; iPoint<t_points.numberOfPoints(); ++iPoint)
     {
         point  p = t_points[iPoint];
@@ -54,7 +49,7 @@ Numeric::solve_RK4_movable_vortices( double dt, CartesianGridOfSpeed& t_velocity
     Geometry::CloudOfPoints newCloud(t_points.numberOfPoints());
     // On ne bouge que les points :
 	auto start = std::chrono::system_clock::now();
-	//#pragma omp parallel for
+	#pragma omp parallel for
     for ( std::size_t iPoint=0; iPoint<t_points.numberOfPoints(); ++iPoint)
     {
         point  p = t_points[iPoint];
