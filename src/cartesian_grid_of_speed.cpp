@@ -14,6 +14,7 @@ CartesianGridOfSpeed::CartesianGridOfSpeed( std::pair<std::size_t,std::size_t> t
     assert(m_step>0.);
 }
 
+//TODO omp parallel here
 void 
 CartesianGridOfSpeed::updateVelocityField( Simulation::Vortices const& t_vortices )
 {

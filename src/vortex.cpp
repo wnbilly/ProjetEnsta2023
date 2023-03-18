@@ -110,5 +110,6 @@ Vortices::computeSpeed( point const& a_point ) const -> vector
         }
         
     }
+
     return speed;
 }

@@ -91,10 +91,6 @@ auto readConfigFile( std::ifstream& input )
 // make all
 // mpirun -n 2 ./vortexSimulation.exe data/simpleSimulation.dat 1280 1024
 
-//TODO add timers to compare the percentages of time between different computation before and after parallelization (profilinbg comparison)
-
-//RAPPORT : Speedup en fonction de n proc (tableau + graphique) + Efficacité parallèle également + Configuration PC +
-
 /*template for timers
 auto start = std::chrono::system_clock::now();
 auto end = std::chrono::system_clock::now();
@@ -145,11 +141,11 @@ int main( int nargs, char* argv[] )
 	bool animate = false;
 	double dt = 0.1;
 
+	// added bool running to easily make the processus 2 stop with the processus 1 (when the window is closed)
 	bool running = true;
 
 	if (rank==0) {
-
-		//std::cout << vortices << isMobile << std::endl;
+		// Code for the display processus
 
 		std::cout << "######## Vortex simulator ########" << std::endl << std::endl;
 		std::cout << "Press P for play animation " << std::endl;
@@ -209,7 +205,9 @@ int main( int nargs, char* argv[] )
 					advance = true;
 					ordersToSend = true;
 				}
-				if (ordersToSend) // On envoie uniquement s'il y a eu des toggle de animate, advance, dt ou fermeture
+				// On envoie uniquement s'il y a eu des toggle de animate, advance, dt ou fermeture
+				// Pour économiser les communications
+				if (ordersToSend)
 				{
 					// On ne compte pas ces temps de communication car elles sont ponctuelles
 					std::cout << "0 sending orders" << std::endl;
@@ -221,10 +219,10 @@ int main( int nargs, char* argv[] )
 				}
 			}
 
-			// COMM TO CALCUL
 			std::chrono::_V2::system_clock::time_point startComm;
 			std::chrono::_V2::system_clock::time_point endComm;
 
+			// Reception of the data to display
 			if (animate | advance) {
 				startComm = std::chrono::system_clock::now();
 				if (isMobile) {
@@ -249,8 +247,8 @@ int main( int nargs, char* argv[] )
 			myScreen.drawText(str_fps, Geometry::Point<double>{300, double(myScreen.getGeometry().second - 96)});
 			myScreen.display();
 
+			// Update the total timers to calculate the means of display time and communication time for the display processus
 			auto endDisplay = std::chrono::system_clock::now();
-
 			totalComm += endComm - startComm;
 			totalDisplay += endDisplay - startDisplay - (endComm - startComm);
 			nbIterComm++;
@@ -260,8 +258,10 @@ int main( int nargs, char* argv[] )
 		std::cout << "==Processus 0==\nAffichage :" << std::to_string(totalDisplay.count() / nbIterDisplay) << std::endl; // Affichage temps d'affichage
 		std::cout << "Communication:" << std::to_string(totalComm.count() / nbIterComm) << std::endl; // Affichage temps de calcul
 
-	} else if (rank==1) { // 2 tâches pour l'instant
+	} else if (rank==1) {
+		// Code for the computation processus
 
+		// Init timers
 		std::chrono::duration<double> totalCalcul;
 		std::chrono::duration<double> totalComm;
 		int nbIter = 0;
@@ -273,7 +273,7 @@ int main( int nargs, char* argv[] )
 			MPI_Iprobe(0, 0, global, &flag, MPI_STATUS_IGNORE);
 			if (flag)
 			{	// Used MPI_Recv to not miss any toggle of the parameters (for example missing a toggle of running would lead to processus 1 not finishing )
-				MPI_Recv(&running, 1, MPI_CXX_BOOL, 0, 0, global, MPI_STATUS_IGNORE); // Equivalent to myScreen.isOpen() for process of rank 1
+				MPI_Recv(&running, 1, MPI_CXX_BOOL, 0, 0, global, MPI_STATUS_IGNORE);
 				MPI_Recv(&animate, 1, MPI_CXX_BOOL, 0, 0, global, MPI_STATUS_IGNORE);
 				MPI_Recv(&advance, 1, MPI_CXX_BOOL, 0, 0, global, MPI_STATUS_IGNORE);
 				MPI_Recv(&dt, 1, MPI_DOUBLE, 0, 0, global, MPI_STATUS_IGNORE);
@@ -282,6 +282,8 @@ int main( int nargs, char* argv[] )
 			}
 
 			// Used MPI_Isend so the display does not slow down the computing processus
+			// It results in the fact that some data could be missed by the display (I guess)
+			// but the aim of the project is to improve the performances of the simulation
 			if (animate | advance) {
 				nbIter++;
 				if (isMobile) {
